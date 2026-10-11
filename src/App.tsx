@@ -268,9 +268,12 @@ function MainApp() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden select-none">
+    <div className="relative w-full h-full h-[100dvh] overflow-hidden select-none">
       {/* ========== TOP BAR ========== */}
-      <div className="absolute top-3 left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none gap-2">
+      <div 
+        className="absolute left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none gap-2"
+        style={{ top: 'max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))' }}
+      >
         {/* Left Side: Logo + Admin Status */}
         <div className="flex items-center space-x-2 pointer-events-auto">
           <div className="bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-lg border border-gray-100 flex items-center space-x-2">
@@ -388,7 +391,10 @@ function MainApp() {
       </MapContainer>
 
       {/* ========== BOTTOM FLOATING CONTROLS ========== */}
-      <div className="absolute bottom-6 left-4 right-4 z-[1000] flex items-center justify-between pointer-events-none">
+      <div 
+        className="absolute left-4 right-4 z-[1000] flex items-center justify-between pointer-events-none"
+        style={{ bottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem))' }}
+      >
         {/* Recenter Button */}
         <button
           onClick={handleRecenter}
