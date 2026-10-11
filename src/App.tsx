@@ -169,20 +169,29 @@ function MainApp() {
     newPinData: Omit<EmergencyPin, 'id' | 'createdAt' | 'status' | 'comments'>
   ) => {
     const pinId = 'pin-' + Date.now();
-    const newPin: EmergencyPin = {
-      ...newPinData,
+    
+    // Firebase does not allow 'undefined' fields, so clean them up
+    const cleanData: any = {
       id: pinId,
+      lat: newPinData.lat,
+      lng: newPinData.lng,
+      title: newPinData.title,
+      category: newPinData.category,
       status: 'urgent',
       createdAt: Date.now(),
-      comments: [],
     };
+    if (newPinData.description) cleanData.description = newPinData.description;
+    if (newPinData.locationName) cleanData.locationName = newPinData.locationName;
+    if (newPinData.contact) cleanData.contact = newPinData.contact;
+    if (newPinData.imageUrl) cleanData.imageUrl = newPinData.imageUrl;
 
     try {
-      await set(ref(rtdb, `emergency_pins/${pinId}`), newPin);
+      await set(ref(rtdb, `emergency_pins/${pinId}`), cleanData);
       setNewPinPosition(null);
-      setActivePinForDetail(newPin);
-    } catch (err) {
+      setActivePinForDetail(cleanData);
+    } catch (err: any) {
       console.error('Failed to create pin:', err);
+      alert('ไม่สามารถส่งหมุดได้: ' + (err.message || 'โปรดตรวจสอบ Firebase Rules'));
     }
   };
 
