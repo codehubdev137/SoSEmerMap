@@ -14,6 +14,8 @@ import {
   Shield,
   LogOut,
 } from 'lucide-react';
+import { ref, onValue, set, update, remove } from 'firebase/database';
+import { rtdb } from './firebase';
 import type { EmergencyPin, PinStatus } from './types';
 
 import { createPinIcon, createCurrentLocationIcon } from './markers';
@@ -46,83 +48,12 @@ const MapController: React.FC<{
   return null;
 };
 
-// Initial Mock data so the map is not empty on first open
-const INITIAL_PINS: EmergencyPin[] = [
-  {
-    id: 'demo-1',
-    lat: 13.7563,
-    lng: 100.5018,
-    title: 'รถจักรยานยนต์เฉี่ยวชน มีผู้บาดเจ็บ',
-    category: 'accident',
-    description: 'มีผู้บาดเจ็บถลอกที่แขนขา หน้าแยก รถยังขวางทางจราจร 1 เลน',
-    locationName: 'ถนนราชดำเนินกลาง, เขตพระนคร, กรุงเทพฯ',
-    status: 'urgent',
-    createdAt: Date.now() - 25 * 60 * 1000,
-    comments: [
-      {
-        id: 'c-1',
-        author: 'กู้ภัยจุดพระนคร',
-        text: 'รับแจ้งแล้วครับ กำลังเดินทางไป 5 นาทีถึง',
-        createdAt: Date.now() - 10 * 60 * 1000,
-      },
-    ],
-  },
-  {
-    id: 'demo-2',
-    lat: 13.765,
-    lng: 100.538,
-    title: 'ขอความช่วยเหลือ ล้อยางระเบิดข้างทางด่วน',
-    category: 'other',
-    description: 'มีแม่และเด็กเล็กอยู่บนรถ ต้องการความช่วยเหลือเปลี่ยนยางอะไหล่',
-    locationName: 'ทางพิเศษศรีรัช, เขตราชเทวี, กรุงเทพฯ',
-    contact: '081-999-XXXX',
-    status: 'in_progress',
-    createdAt: Date.now() - 90 * 60 * 1000,
-    comments: [
-      {
-        id: 'c-2',
-        author: 'พลเมืองดีช่างต้น',
-        text: 'กำลังนำแม่แรงไปช่วยครับ อยู่อีก 1 กิโลเมตร',
-        createdAt: Date.now() - 30 * 60 * 1000,
-      },
-    ],
-  },
-  {
-    id: 'demo-3',
-    lat: 13.742,
-    lng: 100.525,
-    title: 'ไฟไหม้สายสื่อสารเสาไฟฟ้า',
-    category: 'fire',
-    description: 'เจ้าหน้าที่ดับเพลิงควบคุมเพลิงเรียบร้อยแล้ว กำลังรอการไฟฟ้ารองรับ',
-    locationName: 'ถนนสาทร, เขตบางรัก, กรุงเทพฯ',
-    status: 'resolved',
-    createdAt: Date.now() - 4 * 60 * 60 * 1000,
-    comments: [
-      {
-        id: 'c-3',
-        author: 'จนท. ดับเพลิง',
-        text: 'เพลิงสงบเรียบร้อย ปลอดภัยครับ',
-        createdAt: Date.now() - 3 * 60 * 60 * 1000,
-      },
-    ],
-  },
-];
-
 function MainApp() {
   const { isAdmin, login, logout } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
-  const [pins, setPins] = useState<EmergencyPin[]>(() => {
-    const saved = localStorage.getItem('emergency_pins');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    return INITIAL_PINS;
-  });
+  // Pins synced from Firebase Realtime Database
+  const [pins, setPins] = useState<EmergencyPin[]>([]);
 
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>({
     lat: 13.7563,
@@ -145,12 +76,41 @@ function MainApp() {
   // Filter state
   const [statusFilter, setStatusFilter] = useState<'all' | PinStatus>('all');
 
-  // Save pins to LocalStorage
+  // 1. Sync Pins in REALTIME from Firebase
   useEffect(() => {
-    localStorage.setItem('emergency_pins', JSON.stringify(pins));
+    const pinsRef = ref(rtdb, 'emergency_pins');
+    const unsubscribe = onValue(pinsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Convert object dictionary to array
+        const list: EmergencyPin[] = Object.values(data).map((item: any) => ({
+          ...item,
+          comments: item.comments ? Object.values(item.comments) : [],
+        }));
+        // Sort newest first
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        setPins(list);
+      } else {
+        setPins([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Update activePinForDetail if pins change
+  useEffect(() => {
+    if (activePinForDetail) {
+      const updated = pins.find((p) => p.id === activePinForDetail.id);
+      if (updated) {
+        setActivePinForDetail(updated);
+      } else {
+        setActivePinForDetail(null);
+      }
+    }
   }, [pins]);
 
-  // Request user Geolocation on start & watchPosition for higher continuous accuracy
+  // Request user Geolocation on start & watchPosition for continuous accuracy
   useEffect(() => {
     if ('geolocation' in navigator) {
       let isFirstLocation = true;
@@ -204,56 +164,61 @@ function MainApp() {
     return allActivePins.filter((p) => p.status === statusFilter);
   }, [allActivePins, statusFilter]);
 
-  // Handle adding a new emergency pin
-  const handleCreatePin = (newPinData: Omit<EmergencyPin, 'id' | 'createdAt' | 'status' | 'comments'>) => {
+  // Handle adding a new emergency pin (write to Firebase)
+  const handleCreatePin = async (
+    newPinData: Omit<EmergencyPin, 'id' | 'createdAt' | 'status' | 'comments'>
+  ) => {
+    const pinId = 'pin-' + Date.now();
     const newPin: EmergencyPin = {
       ...newPinData,
-      id: 'pin-' + Date.now(),
+      id: pinId,
       status: 'urgent',
       createdAt: Date.now(),
       comments: [],
     };
-    setPins((prev) => [newPin, ...prev]);
-    setNewPinPosition(null);
-    setActivePinForDetail(newPin);
+
+    try {
+      await set(ref(rtdb, `emergency_pins/${pinId}`), newPin);
+      setNewPinPosition(null);
+      setActivePinForDetail(newPin);
+    } catch (err) {
+      console.error('Failed to create pin:', err);
+    }
   };
 
-  // Update status (Admin only)
-  const handleUpdateStatus = useCallback((pinId: string, newStatus: PinStatus) => {
-    setPins((prev) =>
-      prev.map((p) => (p.id === pinId ? { ...p, status: newStatus } : p))
-    );
-    setActivePinForDetail((prev) =>
-      prev && prev.id === pinId ? { ...prev, status: newStatus } : prev
-    );
+  // Update status (Admin only - write to Firebase)
+  const handleUpdateStatus = useCallback(async (pinId: string, newStatus: PinStatus) => {
+    try {
+      await update(ref(rtdb, `emergency_pins/${pinId}`), { status: newStatus });
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    }
   }, []);
 
-  // Delete pin (Admin only)
-  const handleDeletePin = useCallback((pinId: string) => {
-    setPins((prev) => prev.filter((p) => p.id !== pinId));
-    setActivePinForDetail((prev) => (prev && prev.id === pinId ? null : prev));
+  // Delete pin (Admin only - remove from Firebase)
+  const handleDeletePin = useCallback(async (pinId: string) => {
+    try {
+      await remove(ref(rtdb, `emergency_pins/${pinId}`));
+      setActivePinForDetail(null);
+    } catch (err) {
+      console.error('Failed to delete pin:', err);
+    }
   }, []);
 
-  // Add comment
-  const handleAddComment = useCallback((pinId: string, commentText: string, author: string) => {
+  // Add comment (write to Firebase)
+  const handleAddComment = useCallback(async (pinId: string, commentText: string, author: string) => {
+    const commentId = 'c-' + Date.now();
     const newComment = {
-      id: 'c-' + Date.now(),
+      id: commentId,
       author,
       text: commentText,
       createdAt: Date.now(),
     };
-    setPins((prev) =>
-      prev.map((p) =>
-        p.id === pinId
-          ? { ...p, comments: [...p.comments, newComment] }
-          : p
-      )
-    );
-    setActivePinForDetail((prev) =>
-      prev && prev.id === pinId
-        ? { ...prev, comments: [...prev.comments, newComment] }
-        : prev
-    );
+    try {
+      await set(ref(rtdb, `emergency_pins/${pinId}/comments/${commentId}`), newComment);
+    } catch (err) {
+      console.error('Failed to add comment:', err);
+    }
   }, []);
 
   // Fly to a specific pin from drawer
@@ -270,7 +235,7 @@ function MainApp() {
   return (
     <div className="relative w-full h-full h-[100dvh] overflow-hidden select-none">
       {/* ========== TOP BAR ========== */}
-      <div 
+      <div
         className="absolute left-3 right-3 z-[1000] flex items-center justify-between pointer-events-none gap-2"
         style={{ top: 'max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))' }}
       >
@@ -377,7 +342,7 @@ function MainApp() {
           </Marker>
         )}
 
-        {/* All Emergency Pins (Locked: draggable=false) */}
+        {/* All Emergency Pins from Firebase */}
         {filteredPins.map((pin) => (
           <Marker
             key={pin.id}
@@ -391,7 +356,7 @@ function MainApp() {
       </MapContainer>
 
       {/* ========== BOTTOM FLOATING CONTROLS ========== */}
-      <div 
+      <div
         className="absolute left-4 right-4 z-[1000] flex items-center justify-between pointer-events-none"
         style={{ bottom: 'max(1.5rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem))' }}
       >
