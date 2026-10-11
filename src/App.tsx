@@ -179,6 +179,7 @@ function MainApp() {
       category: newPinData.category,
       status: 'urgent',
       createdAt: Date.now(),
+      comments: [],
     };
     if (newPinData.description) cleanData.description = newPinData.description;
     if (newPinData.locationName) cleanData.locationName = newPinData.locationName;

@@ -201,18 +201,18 @@ export const PinDetailModal: React.FC<PinDetailModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-bold text-gray-800 flex items-center">
                 <MessageSquare className="w-3.5 h-3.5 mr-1" />
-                คอมเมนต์ & ช่วยเหลือ ({pin.comments.length})
+                คอมเมนต์ & ช่วยเหลือ ({(pin.comments || []).length})
               </h3>
             </div>
 
             {/* Comment list */}
             <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-              {pin.comments.length === 0 ? (
+              {(pin.comments || []).length === 0 ? (
                 <p className="text-xs text-gray-400 italic text-center py-4 bg-gray-50 rounded-xl">
                   ยังไม่มีคอมเมนต์ ร่วมพิมพ์แจ้งข้อมูลหรือให้กำลังใจได้เลย
                 </p>
               ) : (
-                pin.comments.map((comment) => (
+                (pin.comments || []).map((comment) => (
                   <div key={comment.id} className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 text-xs">
                     <div className="flex justify-between items-center text-gray-500 mb-1">
                       <span className="font-semibold text-gray-800">{comment.author}</span>
