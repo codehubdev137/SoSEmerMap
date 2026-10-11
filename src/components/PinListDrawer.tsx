@@ -294,14 +294,14 @@ export const PinListDrawer: React.FC<PinListDrawerProps> = ({
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/30 z-[500]"
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-[2000]"
           onClick={onClose}
         />
       )}
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-[380px] max-w-[90vw] bg-gray-50 shadow-2xl z-[501] transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`fixed top-0 right-0 h-full w-[380px] max-w-[90vw] bg-gray-50 shadow-2xl z-[2001] transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
